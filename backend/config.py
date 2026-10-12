@@ -23,6 +23,11 @@ TTS_DIR = DATA_DIR / "tts"
 
 # n8n: bütün hadisələr (profil, izlənən video, lüğətə söz) bir webhook-a gedir — DubLens 01
 N8N_EVENT_WEBHOOK = os.getenv("N8N_EVENT_WEBHOOK", "http://localhost:5678/webhook/dublens/event")
+# Serverdə qeydiyyat yalnız bu kodla (boşdursa hər kəs qeydiyyatdan keçə bilər)
+INVITE_CODE = os.getenv("INVITE_CODE", "").strip()
+# Bir istifadəçi gündə neçə video yükləyə bilər (API xərcini qorumaq üçün)
+STUDIO_DAILY_LIMIT = int(os.getenv("STUDIO_DAILY_LIMIT", "10"))
+
 # Panel API-ni harada yoxlasın (Docker-də: http://api:8000)
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 

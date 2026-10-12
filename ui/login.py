@@ -1,7 +1,9 @@
 """Giriş və qeydiyyat. Qeydiyyatda email məcburidir — səhər kartları ora gəlir (n8n)."""
+import hmac
+
 import streamlit as st
 
-from backend import db, events
+from backend import config, db, events
 
 HOURS = list(range(6, 24))
 
@@ -54,9 +56,13 @@ def render():
                                     format_func=lambda k: {"az": "Azərbaycan dili", "tr": "Türk dili",
                                                            "ru": "Rus dili", "en": "İngilis dili"}[k])
                 hour = c2.selectbox("Səhər kartları", HOURS, index=HOURS.index(8), format_func=lambda h: f"{h:02d}:00")
+                code = (st.text_input("Dəvət kodu", type="password", help="Hesabı yalnız kodu olan aça bilər")
+                        if config.INVITE_CODE else "")
                 go = st.form_submit_button("Hesab yarat", type="primary", width="stretch")
             if go:
-                if p1 != p2:
+                if config.INVITE_CODE and not hmac.compare_digest(code.strip(), config.INVITE_CODE):
+                    st.error("Dəvət kodu səhvdir.")
+                elif p1 != p2:
                     st.error("Şifrələr eyni deyil.")
                 else:
                     ok, msg = db.register(un, p1, name, email, hour, lang)

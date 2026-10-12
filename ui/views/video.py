@@ -116,6 +116,12 @@ if not ss.vid_result:
             go = st.button("Başla", type="primary", icon=":material/play_arrow:", width="stretch")
             st.caption("10 dəqiqəlik video üçün təxminən 1–3 dəqiqə çəkir." +
                        (" Səs: ElevenLabs." if tts.provider() == "elevenlabs" and ch == "dub" else ""))
+            today = time.strftime("%Y-%m-%d")
+            used = sum(1 for d in studio.history(u["username"], limit=200)
+                       if time.strftime("%Y-%m-%d", time.localtime(d.get("created", 0))) == today)
+            if go and used >= config.STUDIO_DAILY_LIMIT:
+                st.warning(f"Bu gün {used} video etmisən — gündəlik limit {config.STUDIO_DAILY_LIMIT}. Sabah yenə.")
+                go = False
             if go:
                 if not config.OPENAI_API_KEY:
                     st.error("`.env` faylında OPENAI_API_KEY yoxdur.")
