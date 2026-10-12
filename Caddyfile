@@ -1,0 +1,7 @@
+# Avtomatik HTTPS (Let's Encrypt). DOMAIN=164-92-10-20.sslip.io kimi pulsuz domen işləyir.
+api.{$DOMAIN} {
+	reverse_proxy api:8000
+}
+{$DOMAIN} {
+	reverse_proxy panel:8501
+}

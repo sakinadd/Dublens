@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="az">
+<head>
+  <meta charset="utf-8">
+  <title>DubLens</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="mark">D</span>DubLens</div>
+    <label class="switch" title="Aç / bağla (Alt + D)">
+      <input type="checkbox" id="enabled"><span></span>
+    </label>
+  </header>
+
+  <main>
+    <fieldset class="modes" id="modes">
+      <legend>Necə izləyirsən?</legend>
+      <label><input type="radio" name="mode" value="sub"><b>Altyazı</b><small>Yalnız tərcümə</small></label>
+      <label><input type="radio" name="mode" value="dual"><b>İkidilli</b><small>Sözə klik → lüğət</small></label>
+      <label><input type="radio" name="mode" value="dub"><b>Dublyaj</b><small>Səsli tərcümə</small></label>
+    </fieldset>
+
+    <div class="row">
+      <label for="lang">Dil</label>
+      <select id="lang">
+        <option value="az">Azərbaycan dili</option>
+        <option value="tr">Türk dili</option>
+        <option value="ru">Rus dili</option>
+        <option value="en">İngilis dili</option>
+      </select>
+    </div>
+    <div class="row" id="voiceRow">
+      <label for="voice">Səs</label>
+      <select id="voice">
+        <option value="nova">Nova — qadın, aydın</option>
+        <option value="shimmer">Shimmer — qadın, yumşaq</option>
+        <option value="coral">Coral — qadın, canlı</option>
+        <option value="onyx">Onyx — kişi, dərin</option>
+        <option value="echo">Echo — kişi, sakit</option>
+        <option value="alloy">Alloy — neytral</option>
+      </select>
+    </div>
+    <label class="check" id="subsRow"><input type="checkbox" id="dubSubs"> Dublyajda altyazını da göstər</label>
+    <div class="row">
+      <label for="fontSize">Ölçü</label>
+      <input type="range" id="fontSize" min="16" max="40" step="2">
+      <output id="fontOut"></output>
+    </div>
+
+    <details id="conn">
+      <summary>Bağlantı <span id="who"></span></summary>
+      <div class="row col">
+        <label for="backend">Server ünvanı</label>
+        <input id="backend" type="url" placeholder="http://localhost:8000">
+      </div>
+      <div class="row col">
+        <label for="token">Token</label>
+        <input id="token" type="password" placeholder="dl_… (DubLens panelində «Uzantı»)">
+      </div>
+      <button id="check">Yadda saxla və yoxla</button>
+    </details>
+    <p id="msg" role="status"></p>
+  </main>
+  <footer>YouTube-da videonu aç — DubLens özü işə düşür. <kbd>Alt</kbd>+<kbd>D</kbd> aç/bağla.</footer>
+  <script src="popup.js"></script>
+</body>
+</html>

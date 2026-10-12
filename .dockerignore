@@ -1,0 +1,9 @@
+.env
+.venv
+data
+.idea
+.git
+__pycache__
+*.pyc
+tests
+deploy

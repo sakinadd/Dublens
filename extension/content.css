@@ -1,0 +1,67 @@
+/* DubLens — YouTube pleyerinin üstündəki altyazı, status və söz kartı */
+#movie_player.dublens-active .ytp-caption-window-container { display: none !important; }
+
+.dublens-root {
+  position: absolute; inset: 0; pointer-events: none; z-index: 60;
+  font-family: "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --dl-ink: #0d0d12; --dl-sun: #ffd23f; --dl-paper: #fffdf6;
+}
+.dublens-chip {
+  position: absolute; top: 14px; left: 14px; max-width: 70%;
+  padding: 6px 12px 6px 26px; border-radius: 999px;
+  background: rgba(13, 13, 18, .82); color: #f4f4f6; font-size: 13px; font-weight: 600; line-height: 1.3;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .25);
+}
+.dublens-chip::before {
+  content: ""; position: absolute; left: 11px; top: 50%; width: 8px; height: 8px; margin-top: -4px;
+  border-radius: 50%; background: var(--dl-sun);
+}
+.dublens-chip[data-kind="busy"]::before { animation: dl-pulse 1s ease-in-out infinite; }
+.dublens-chip[data-kind="ok"]::before { background: #3ddc84; }
+.dublens-chip[data-kind="error"]::before { background: #ff5a5f; }
+@keyframes dl-pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .dublens-chip::before { animation: none !important; } }
+
+.dublens-subs {
+  position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%);
+  width: max-content; max-width: 86%; text-align: center; pointer-events: auto;
+}
+.ytp-autohide .dublens-subs { bottom: 4%; }
+.dl-tr {
+  display: inline; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  padding: .12em .45em; border-radius: 6px; line-height: 1.55;
+  background: rgba(13, 13, 18, .78); color: #fff;
+  font-size: var(--dl-size, 26px); font-weight: 600; letter-spacing: .005em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+}
+.dublens-root[data-mode="dub"][data-subs="0"] .dublens-subs { display: none; }
+.dublens-root[data-mode="dub"] .dl-tr { font-size: calc(var(--dl-size, 26px) * .78); opacity: .92; }
+.dl-src {
+  margin-top: 8px; font-size: calc(var(--dl-size, 26px) * .62); line-height: 1.5; color: #e8e8ee;
+}
+.dl-src:empty { display: none; }
+.dl-src .dl-word {
+  cursor: pointer; padding: 0 .08em; border-radius: 4px;
+  background: rgba(13, 13, 18, .62); text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+}
+.dl-src .dl-word:hover { background: var(--dl-sun); color: var(--dl-ink); text-shadow: none; }
+.ytp-fullscreen .dublens-root { --dl-size-mult: 1.45; }
+.ytp-fullscreen .dl-tr { font-size: calc(var(--dl-size, 26px) * 1.45); }
+.ytp-fullscreen .dl-src { font-size: calc(var(--dl-size, 26px) * .9); }
+
+.dublens-card {
+  position: absolute; right: 18px; bottom: 22%; width: 300px; pointer-events: auto;
+  background: var(--dl-paper); color: var(--dl-ink); border-radius: 14px; padding: 16px 18px 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .35); border-top: 5px solid var(--dl-sun); font-size: 14px;
+}
+.dublens-card[hidden] { display: none; }
+.dl-close {
+  position: absolute; top: 6px; right: 8px; border: 0; background: transparent; color: #6b6b78;
+  font-size: 22px; cursor: pointer; line-height: 1;
+}
+.dl-c-head { font-size: 20px; font-weight: 800; letter-spacing: -.01em; margin-right: 20px; }
+.dl-c-body { margin-top: 6px; color: #3b3b46; line-height: 1.45; }
+.dl-c-tr { font-size: 18px; font-weight: 700; color: var(--dl-ink); margin-bottom: 8px; }
+.dl-c-sent { font-style: italic; margin-bottom: 8px; }
+.dl-c-ex { color: #555562; font-size: 13px; border-left: 3px solid var(--dl-sun); padding-left: 8px; margin-bottom: 8px; }
+.dl-c-ok { color: #1a7f4b; font-size: 12.5px; font-weight: 600; }

@@ -1,0 +1,31 @@
+# DigitalOcean Droplet-də: docker compose up -d --build
+# api  → https://api.$DOMAIN   (Chrome uzantısı buna qoşulur)
+# panel→ https://$DOMAIN       (Streamlit paneli)
+services:
+  api:
+    build: .
+    env_file: .env
+    volumes: ["dublens-data:/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  panel:
+    build: .
+    env_file: .env
+    command: ["streamlit", "run", "ui/app.py", "--server.port", "8501", "--server.address", "0.0.0.0", "--server.headless", "true"]
+    environment: ["API_URL=http://api:8000", "DUBLENS_NO_RELOAD=1"]
+    volumes: ["dublens-data:/data"]
+    restart: unless-stopped
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    environment: ["DOMAIN=${DOMAIN}"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", "caddy-data:/data"]
+    depends_on: [api, panel]
+    restart: unless-stopped
+volumes:
+  dublens-data:
+  caddy-data:
