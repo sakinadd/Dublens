@@ -9,6 +9,7 @@ Ehtiyat: OpenAI (gpt-4o-mini-tts → tts-1). ElevenLabs xəta verərsə avtomati
 """
 import hashlib
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -30,6 +31,7 @@ ACCENT = {"az": "You are a native Azerbaijani speaker from Baku; use natural Aze
           "en": "You are a native English speaker."}
 ELEVEN_MODEL_HQ = getattr(config, "ELEVEN_MODEL_HQ", "eleven_multilingual_v2")
 
+_EL_SLOTS = threading.BoundedSemaphore(max(1, getattr(config, "ELEVEN_CONCURRENCY", 2)))
 LAST_ERROR = ""                 # ElevenLabs-ın son xətası (panel göstərir)
 STATS = {"elevenlabs": 0, "openai": 0}
 _lock = threading.Lock()
@@ -94,10 +96,17 @@ def _elevenlabs(text: str, voice: str, lang: str, speed: float, hq: bool = False
             body["previous_text"] = prev[-300:]
         if nxt:
             body["next_text"] = nxt[:300]
-    r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
-                      params={"output_format": "mp3_44100_128"},
-                      headers={"xi-api-key": config.ELEVENLABS_API_KEY, "Content-Type": "application/json"},
-                      json=body, timeout=90)
+    # Planın eyni anda sorğu limiti var (pulsuz: 2). Limitdən artıq göndərsək 429 qaytarır və cümlə
+    # başqa səslə (OpenAI) deyilir — səs birdən dəyişir. Ona görə: növbə + 429-da gözləyib təkrar.
+    for attempt in range(5):
+        with _EL_SLOTS:
+            r = requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
+                              params={"output_format": "mp3_44100_128"},
+                              headers={"xi-api-key": config.ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+                              json=body, timeout=90)
+        if r.status_code not in (429, 500, 502, 503) or attempt == 4:
+            break
+        time.sleep(1.0 + attempt * 1.5)
     if r.status_code != 200:
         msg = r.text[:300]
         try:
@@ -147,6 +156,11 @@ def synth(text: str, voice: str = "nova", lang: str = "az", register: str = "neu
             data = None
     if data is None:
         data = _openai(text, fallback or voice, lang, register, speed, persona)
+        if prov == "elevenlabs":
+            # ehtiyat səsi ElevenLabs açarı altında saxlama — yoxsa həmin cümlə həmişəlik başqa səslə qalır
+            key = _key(text, voice, lang, register, speed, "openai-fallback",
+                       f"{int(hq)}|{persona}|{prev[-60:]}|{nxt[:60]}")
+            path = clip_path(key)
     with _lock:
         STATS[used] += 1
     path.write_bytes(data)

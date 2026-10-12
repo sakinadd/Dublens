@@ -16,6 +16,8 @@ TTS_FALLBACK_MODEL = os.getenv("TTS_FALLBACK_MODEL", "tts-1")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
 ELEVEN_MODEL_AZ = os.getenv("ELEVEN_MODEL_AZ", "eleven_v3")
 ELEVEN_MODEL_FAST = os.getenv("ELEVEN_MODEL_FAST", "eleven_flash_v2_5")
+# ElevenLabs eyni anda neçə sorğu qəbul edir: pulsuz plan 2, Starter 3, Creator 5
+ELEVEN_CONCURRENCY = int(os.getenv("ELEVEN_CONCURRENCY", "2"))
 
 DATA_DIR = Path(os.getenv("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "dublens.db"
