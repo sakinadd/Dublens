@@ -223,37 +223,51 @@
   }
 
   // ---------------------------------------------------------------- dublyaj
-  // Səslər kiçik paketlərlə: əvvəl izlənən yerin 3 cümləsi (bir neçə saniyəyə), sonra qalanları.
-  async function queueDub(gen, segs) {
+  // Səslər bir-bir istənilir: 2 "işçi" növbədən həmişə videonun hazırkı yerinə ən yaxın cümləni götürür.
+  // ElevenLabs-ın pulsuz planı eyni anda 2 sorğu qəbul edir — 2 işçi o 2 yeri daim dolu saxlayır,
+  // hər cümlə hazır olan kimi oxunur (böyük paketin bitməsini gözləmir).
+  const DUB_WORKERS = 2;
+  const dubQ = { gen: -1, todo: new Map(), running: 0, first: true };
+
+  function nextDub() {
     const v = video();
     const t = v ? v.currentTime : 0;
-    const ahead = segs.filter((s) => s.e > t).sort((a, b) => a.s - b.s);
-    const behind = segs.filter((s) => s.e <= t);
-    const order = ahead.concat(behind);
-    const sizes = [3, 5, 8];
-    const chunks = [];
-    for (let i = 0, k = 0; i < order.length; k++) {
-      const n = sizes[Math.min(k, sizes.length - 1)] || 10;
-      chunks.push(order.slice(i, i + n));
-      i += n;
+    let best = null;
+    for (const s of dubQ.todo.values()) {               // əvvəl irəlidəkilər, ən yaxını
+      if (s.e > t - 0.5 && (!best || s.s < best.s)) best = s;
     }
-    let first = true;
-    for (const x of order) S.pending.add(x.id);
-    const run = async (chunk) => {
-      const r = await api("/api/dub", { video_id: S.videoId, lang: S.cfg.lang, voice: S.cfg.voice, style: S.style,
-                                        segments: chunk.map((s) => ({ id: s.id, s: s.s, e: s.e, tr: s.tr })) });
-      if (gen !== S.gen) return;
-      for (const x of chunk) S.pending.delete(x.id);
-      if (!r.ok) { status("DubLens · səs: " + r.error, "error", 5000); return; }
-      for (const c of r.data.clips) if (c.url && !S.clips.has(c.id)) S.clips.set(c.id, { path: c.url, state: "new" });
-      if (first) { first = false; status("DubLens · dublyaj başladı", "ok", 2500); }
-    };
+    if (!best) best = dubQ.todo.values().next().value || null;   // sonra keçmişdə qalanlar
+    if (best) dubQ.todo.delete(best.id);
+    return best;
+  }
+
+  async function dubWorker(gen) {
+    dubQ.running++;
+    try {
+      for (let s = nextDub(); s && gen === S.gen; s = nextDub()) {
+        if (S.clips.has(s.id)) { S.pending.delete(s.id); continue; }
+        const r = await api("/api/dub", { video_id: S.videoId, lang: S.cfg.lang, voice: S.cfg.voice, style: S.style,
+                                          segments: [{ id: s.id, s: s.s, e: s.e, tr: s.tr }] });
+        if (gen !== S.gen) return;
+        S.pending.delete(s.id);
+        if (!r.ok) { status("DubLens · səs: " + r.error, "error", 5000); continue; }
+        for (const c of r.data.clips) if (c.url && !S.clips.has(c.id)) S.clips.set(c.id, { path: c.url, state: "new" });
+        if (dubQ.first) { dubQ.first = false; status("DubLens · dublyaj başladı", "ok", 2500); }
+      }
+    } finally {
+      dubQ.running--;
+      // köhnə video/rejimin işçisi çıxdısa, yeni növbəni boş saxlama
+      if (dubQ.gen === S.gen && dubQ.todo.size && dubQ.running < DUB_WORKERS) dubWorker(S.gen);
+    }
+  }
+
+  function queueDub(gen, segs) {
+    if (dubQ.gen !== gen) { dubQ.gen = gen; dubQ.todo.clear(); dubQ.first = true; }
+    for (const s of segs) {
+      if (!S.clips.has(s.id) && String(s.tr || "").trim()) { dubQ.todo.set(s.id, s); S.pending.add(s.id); }
+    }
     if (S.clips.size === 0) status("DubLens · səs hazırlanır…", "busy");
-    await run(chunks[0] || []);                         // birinci paket tək — tez gəlsin
-    for (let i = 1; i < chunks.length; i += 2) {        // qalanları ikişər paralel
-      if (gen !== S.gen) return;
-      await Promise.all(chunks.slice(i, i + 2).map(run));
-    }
+    while (dubQ.running < DUB_WORKERS && dubQ.todo.size) dubWorker(gen);
   }
   function preload(id) {
     const c = S.clips.get(id);
