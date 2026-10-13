@@ -2,7 +2,7 @@
 
 **DubLens** videoları Azərbaycan dilinə (həmçinin türk, rus, ingilis) çevirir. İki yolla işləyir:
 
-- **Chrome uzantısı** — YouTube-da altyazı, ikidilli rejim (sözə klik → lüğət) və ya canlı **dublyaj**.
+- **Chrome uzantısı** — YouTube-da və altyazılı video olan digər saytlarda altyazı, ikidilli rejim (sözə klik → lüğət) və ya canlı **dublyaj**.
 - **Video studiya** — öz videonu yüklə, DubLens soruşur: **dublyaj, yoxsa tərcümə?** Dialoqda danışanları
   özü tapır (2–4 nəfər) və hər birinə uyğun səs verir: uşağa uşaq, yaşlı kişiyə dərin kişi səsi.
 
@@ -141,7 +141,8 @@ Backend (seqmentlər, LCEL, API, lüğət), bütün panel səhifələri, video s
 5. **Ayarlar → Sistem vəziyyəti**: hamısı yaşıl.
 
 ## Dürüst məhdudiyyətlər
-- Netflix kimi qorunan saytlar dəstəklənmir; uzantı hazırda YouTube üçündür.
+- Uzantı YouTube-da və standart HTML5 altyazısı (`<track>`) olan saytlarda işləyir (Coursera, TED, Vimeo və s.).
+  Altyazısı olmayan saytlar və Netflix kimi DRM ilə qorunan saytlar dəstəklənmir.
 - Studiya videosu 15 dəqiqəyə qədər; danışanları ayırma 2–4 nəfər üçün ən yaxşı işləyir.
 - Eyni anda danışılan yerlərdə (sözkəsmə) dublyaj bir danışanı qısa kəsə bilər.
 - Səs tonu yalnız cinsi/yaşı təxmin edir; səhv olarsa nəticə səhifəsində səsi dəyişmək olur.

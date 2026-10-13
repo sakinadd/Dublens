@@ -38,9 +38,27 @@
     catch (e) { res({ ok: false, error: "Uzantı yeniləndi — səhifəni yenilə." }); }
   });
   const api = (path, body, method = "POST") => send({ type: "api", path, body, method });
-  const video = () => $("#movie_player video.html5-main-video") || $("video.html5-main-video") || $("video");
-  const player = () => $("#movie_player");
+  // YouTube öz yolu ilə (altyazı faylı tutulur); digər saytlarda standart HTML5 altyazı trekləri oxunur
+  const IS_YT = /(^|\.)youtube\.com$/.test(location.hostname);
+  function bestVideo() {                               // səhifədəki ən böyük görünən video
+    let best = null, area = 0;
+    for (const v of document.querySelectorAll("video")) {
+      const r = v.getBoundingClientRect();
+      const a = r.width * r.height;
+      if (a > area && r.width > 160 && r.height > 90) { best = v; area = a; }
+    }
+    return best;
+  }
+  const video = () => IS_YT ? ($("#movie_player video.html5-main-video") || $("video.html5-main-video") || $("video"))
+                            : bestVideo();
+  const player = () => IS_YT ? $("#movie_player") : (bestVideo() ? (document.fullscreenElement || document.body) : null);
+  function hashStr(t) {
+    let h = 5381;
+    for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+  }
   const currentId = () => {
+    if (!IS_YT) return bestVideo() ? "web-" + hashStr(location.hostname + location.pathname + location.search) : null;
     try { return new URL(location.href).searchParams.get("v"); } catch (e) { return null; }
   };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -95,6 +113,14 @@
     p.appendChild(root);
     applyStyle();
     return true;
+  }
+  function placeOverlay() {                           // YouTube-dan kənar: görüntünü videonun üstünə qoy
+    if (IS_YT || !root) return;
+    const v = video();
+    const r = v ? v.getBoundingClientRect() : null;
+    if (!r || r.width < 10) { root.style.display = "none"; return; }
+    Object.assign(root.style, { display: "", position: "fixed", inset: "auto", left: r.left + "px", top: r.top + "px",
+                                width: r.width + "px", height: r.height + "px", zIndex: "2147483000" });
   }
   function applyStyle() {
     if (!root) return;
@@ -372,9 +398,11 @@
 
   // ---------------------------------------------------------------- əsas dövr
   function tick() {
-    if (!S.cfg || !S.cfg.enabled || !S.videoId || S.liveMode) return;
+    if (!S.cfg || !S.cfg.enabled || !S.videoId) return;
+    if (S.liveMode) { if (!IS_YT && ensureUI()) placeOverlay(); return; }
     const v = video();
     if (!v || !ensureUI()) return;
+    placeOverlay();
     const seg = findAt(v.currentTime);
     render(seg);
     if (S.cfg.mode === "dub") dubTick(v, seg);
@@ -389,8 +417,115 @@
     S.lastRendered = null;
     S.liveMode = false; S.liveCtx = []; S.audioErr = false;
     if (liveObs) { liveObs.disconnect(); liveObs = null; }
+    if (webLive) { webLive.stop(); webLive = null; }
+    for (const n of hiddenCaps) n.style.opacity = "";
+    hiddenCaps.clear();
     if (trLine) { trLine.textContent = ""; srcLine.textContent = ""; }
     if (card) card.hidden = true;
+  }
+
+  // HTML5 <track> altyazıları (Coursera, TED, Vimeo və s.): yükləmək üçün "hidden" rejiminə keçirilir —
+  // sayt öz altyazısını göstərməsin, mətn isə oxunsun.
+  //   full: bütün altyazı əldədir → tam tərcümə + dublyaj (ən yaxşı keyfiyyət)
+  //   full deyil: cue-lar hissə-hissə gəlir (HLS) → canlı rejim, hər sətir gələndə
+  const cueText = (c) => String(c.text || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  async function webCues(gen) {
+    let pick = null;
+    for (let i = 0; i < 12; i++) {
+      const v = video();
+      const tracks = v ? Array.from(v.textTracks || []).filter((t) => t.kind === "subtitles" || t.kind === "captions") : [];
+      if (tracks.length) {
+        pick = tracks.find((t) => t.mode === "showing") ||
+               tracks.find((t) => /^en/i.test(t.language || "")) || tracks[0];
+        if (pick.mode === "disabled" || pick.mode === "showing") pick.mode = "hidden";
+        if (pick.cues && pick.cues.length) {
+          const cues = [];
+          for (const c of Array.from(pick.cues)) { const t = cueText(c); if (t) cues.push({ s: c.startTime, e: c.endTime, t }); }
+          if (cues.length) {
+            const dur = v.duration, last = cues[cues.length - 1].e;
+            const full = isFinite(dur) && dur > 0 ? last >= dur * 0.6 : cues.length >= 40;
+            return { cues, track: pick, full };
+          }
+        }
+      }
+      if (!pick && i >= 2) return null;                   // trek ümumiyyətlə yoxdur → dərhal canlı rejim
+      await sleep(500);
+      if (gen !== S.gen) return null;
+    }
+    return pick ? { cues: [], track: pick, full: false } : null;
+  }
+
+  // ---------------------------------------------------------------- digər saytlar: canlı rejim
+  // Pleyer altyazını öz HTML-i ilə çəkirsə (Dailymotion, JW, video.js, Shaka, Plyr…) ekrandakı mətn oxunur.
+  const CAPTION_SEL = [".vjs-text-track-display", ".jw-captions", ".jw-text-track-container", ".shaka-text-container",
+    ".plyr__captions", ".mejs-captions-text", ".fp-captions", ".bmpui-ui-subtitle-overlay",
+    "[class*='subtitle' i]", "[class*='caption' i]", "[class*='SubtitleCue' i]", "[data-testid*='subtitle' i]"].join(",");
+  const NOT_CAPTION = /button|btn|menu|setting|toggle|icon|switch|label|tooltip|select/i;
+  const hiddenCaps = new Set();
+  function domCaptionLine() {
+    const v = video();
+    if (!v) return "";
+    const vr = v.getBoundingClientRect();
+    const found = [];
+    for (const n of document.querySelectorAll(CAPTION_SEL)) {
+      if (n.closest(".dublens-root, button, [role='button'], [role='menu'], [role='menuitem'], select, label")) continue;
+      if (NOT_CAPTION.test(typeof n.className === "string" ? n.className : "")) continue;
+      const r = n.getBoundingClientRect();
+      if (!r.width || !r.height || r.bottom < vr.top || r.top > vr.bottom || r.right < vr.left || r.left > vr.right) continue;
+      const t = (n.innerText || n.textContent || "").replace(/\s+/g, " ").trim();
+      if (t.length < 2 || t.length > 300) continue;
+      found.push(n);
+    }
+    const outer = found.filter((n) => !found.some((m) => m !== n && m.contains(n)));
+    for (const n of outer) if (!hiddenCaps.has(n)) { hiddenCaps.add(n); n.style.opacity = "0"; }   // saytın altyazısını gizlət
+    return outer.map((n) => (n.innerText || n.textContent || "").replace(/\s+/g, " ").trim()).join(" ");
+  }
+
+  let webLive = null;
+  function startWebLive(gen, track) {
+    S.liveMode = true;
+    status(track ? "DubLens · canlı tərcümə" : "DubLens · altyazı gözlənilir (saytda CC / Subtitles-i aç)", "busy", 5000);
+    let last = "", shown = false;
+    const onLine = async (raw) => {
+      const line = (raw || "").replace(/\s+/g, " ").trim();
+      if (line === last) return;
+      last = line;
+      if (!line) { S.lastRendered = null; render(null); return; }
+      let tr = S.liveCache.get(line);
+      if (!tr) {
+        const r = await api("/api/line", { line, context: S.liveCtx.slice(-3), lang: S.cfg.lang });
+        if (gen !== S.gen) return;
+        if (!r.ok) { status("DubLens · " + r.error, "error", 4000); return; }
+        tr = r.data.tr;
+        S.liveCache.set(line, tr);
+      }
+      if (line !== last) return;                         // artıq növbəti sətir gəlib
+      S.liveCtx.push(line);
+      const v = video();
+      const t = v ? v.currentTime : 0;
+      const seg = { id: "live" + hashStr(line) + "_" + Math.round(t), s: t, e: t + 4, src: line, tr };
+      S.lastRendered = null;
+      render(seg);
+      if (!shown) { shown = true; status("DubLens · canlı tərcümə", "ok", 2500); }
+      if (S.cfg.mode === "dub") liveDub(gen, seg);
+    };
+    if (track) {
+      const read = () => onLine(Array.from(track.activeCues || []).map(cueText).join(" "));
+      track.addEventListener("cuechange", read);
+      webLive = { stop: () => track.removeEventListener("cuechange", read) };
+      read();
+    } else {
+      const id = setInterval(() => onLine(domCaptionLine()), 250);
+      webLive = { stop: () => clearInterval(id) };
+    }
+  }
+  async function liveDub(gen, seg) {
+    const r = await api("/api/dub", { video_id: S.videoId, lang: S.cfg.lang, voice: S.cfg.voice, style: S.style,
+                                      segments: [{ id: 0, s: seg.s, e: seg.e, tr: seg.tr }] });
+    if (gen !== S.gen || !r.ok) return;
+    const c = r.data.clips && r.data.clips[0];
+    const v = video();
+    if (c && c.url) send({ type: "audio", cmd: "play", path: c.url, slot: 4, videoRate: (v && v.playbackRate) || 1 });
   }
 
   async function start() {
@@ -408,6 +543,15 @@
     setActive(true);
     S.title = document.title.replace(/^\(\d+\)\s*/, "").replace(/\s*-\s*YouTube\s*$/, "");
     if (S.cfg.mode === "dub") duck(true);
+
+    if (!IS_YT) {                                     // digər saytlar: HTML5 altyazı trekləri
+      placeOverlay();
+      const found = await webCues(gen);
+      if (gen !== S.gen) return;
+      if (found && found.full) { loadVideo(gen, { format: "cues", cues: found.cues }); return; }
+      startWebLive(gen, found ? found.track : null);      // hissə-hissə gələn trek və ya pleyerin öz altyazısı
+      return;
+    }
 
     // 1) pleyer altyazını artıq yükləyibsə — hazırdır; 2) yoxsa CC düyməsini basırıq ki, yükləsin
     let text = S.caps.get(S.videoId);
@@ -458,7 +602,9 @@
     }
   }, true);
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && e.code === "KeyD") chrome.storage.sync.set({ enabled: !S.cfg.enabled });   // Alt + D: aç/bağla
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || "") || (e.target && e.target.isContentEditable);
+    if (e.altKey && e.code === "KeyD" && (IS_YT || (video() && !typing)))
+      chrome.storage.sync.set({ enabled: !S.cfg.enabled });   // Alt + D: aç/bağla
     if (e.key === "Escape" && card && !card.hidden) card.hidden = true;
   });
 
