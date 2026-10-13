@@ -368,31 +368,88 @@
       });
   }
 
-  // ---------------------------------------------------------------- canlı sətir (fayl tutulmayanda)
+  // ---------------------------------------------------------------- canlı rejim (canlı yayım / fayl tutulmayanda)
+  // Canlı altyazı söz-söz yazılır, sətirlər sürüşür, ASR sözləri sonradan düzəldir. Ona görə ekrandakı mətndən
+  // yalnız YENİ sözlər götürülür, cümlə tamamlanınca (durğu, fasilə, uzunluq) kontekstlə tərcümə olunur.
+  const wkey = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+  function newWords(prev, cur) {
+    const P = prev.split(/\s+/).filter(Boolean), C = cur.split(/\s+/).filter(Boolean);
+    const pk = P.map(wkey), ck = C.map(wkey);
+    let cp = 0;                                          // ortaq başlanğıc (sətir uzanıb və ya son söz düzəlib)
+    while (cp < pk.length && cp < ck.length && pk[cp] === ck[cp]) cp++;
+    if (cp > 0 && cp >= pk.length - 2) return { drop: pk.length - cp, add: C.slice(cp) };
+    // sətir sürüşüb: köhnənin sonu = yeninin başı. Eyni anda son 1–2 söz də düzəlmiş ola bilər (d).
+    for (let d = 0; d <= 2 && d < pk.length; d++) {
+      const pe = pk.length - d;
+      for (let m = Math.min(pe, ck.length); m >= (d ? 2 : 1); m--) {
+        let ok = true;
+        for (let i = 0; i < m && ok; i++) ok = pk[pe - m + i] === ck[i];
+        if (ok) return { drop: d, add: C.slice(m) };
+      }
+    }
+    return { drop: 0, add: C };
+  }
+  let liveTimers = [];
+  function liveSentencer(gen) {
+    let prev = "", buf = [], pause = null;
+    liveTimers.push(() => clearTimeout(pause));
+    const flush = () => {
+      clearTimeout(pause);
+      if (!buf.length || gen !== S.gen) return;
+      const chunk = buf.join(" ");
+      buf = [];
+      if (chunk.split(" ").length >= 2 || /[.!?]$/.test(chunk)) liveChunk(gen, chunk);
+      else buf = [chunk];                               // tək söz — növbətiyə qoş
+    };
+    return (raw) => {
+      const text = (raw || "").replace(/\s+/g, " ").trim();
+      if (!text || text === prev) return;
+      const { drop, add } = newWords(prev, text);
+      prev = text;
+      if (drop) buf.splice(Math.max(0, buf.length - drop), drop);
+      if (!add.length && !drop) return;
+      buf.push(...add);
+      clearTimeout(pause);
+      const lastW = buf[buf.length - 1] || "";
+      if (/[.!?…]["')\]]?$/.test(lastW) && buf.length >= 3) flush();
+      else if (buf.length >= 12) flush();
+      else pause = setTimeout(flush, 1300);
+    };
+  }
+  // Tərcümələr paralel istənir, amma ekranda ardıcıllıqla göstərilir
+  let liveChain = Promise.resolve(), liveClear = null;
+  function liveChunk(gen, chunk) {
+    const cached = S.liveCache.get(chunk);
+    const ctx = S.liveCtx.slice(-4);
+    S.liveCtx.push(chunk);
+    const p = cached ? Promise.resolve({ ok: true, data: { tr: cached } })
+                     : api("/api/line", { line: chunk, context: ctx, lang: S.cfg.lang });
+    liveChain = liveChain.then(async () => {
+      const r = await p;
+      if (gen !== S.gen) return;
+      if (!r.ok) { status("DubLens · " + r.error, "error", 4000); return; }
+      const tr = r.data.tr;
+      S.liveCache.set(chunk, tr);
+      const v = video();
+      const t = v ? v.currentTime : 0;
+      const seg = { id: "live" + hashStr(chunk) + "_" + Math.round(t), s: t, e: t + 6, src: chunk, tr };
+      S.lastRendered = null;
+      render(seg);
+      clearTimeout(liveClear);
+      liveClear = setTimeout(() => { if (gen === S.gen) { S.lastRendered = null; render(null); } }, 7000);
+      if (S.cfg.mode === "dub") liveDub(gen, seg);
+    }).catch(() => {});
+  }
+
   let liveObs = null;
   function startLive(gen) {
     S.liveMode = true;
-    status("DubLens · canlı tərcümə (altyazı faylı tutulmadı)", "busy", 4000);
+    status("DubLens · canlı tərcümə", "busy", 4000);
     const box = $(".ytp-caption-window-container") || player();
     if (!box) return;
-    let last = "";
-    liveObs = new MutationObserver(async () => {
-      const line = Array.from(document.querySelectorAll(".ytp-caption-segment")).map((x) => x.textContent).join(" ").trim();
-      if (!line || line === last) return;
-      last = line;
-      let tr = S.liveCache.get(line);
-      if (!tr) {
-        const r = await api("/api/line", { line, context: S.liveCtx.slice(-3), lang: S.cfg.lang });
-        if (gen !== S.gen || !r.ok) return;
-        tr = r.data.tr;
-        S.liveCache.set(line, tr);
-      }
-      S.liveCtx.push(line);
-      const v = video();
-      const t = v ? v.currentTime : 0;
-      S.lastRendered = null;
-      render({ id: "live" + t, s: t, e: t + 4, src: line, tr });
-    });
+    const feed = liveSentencer(gen);
+    liveObs = new MutationObserver(() =>
+      feed(Array.from(document.querySelectorAll(".ytp-caption-segment")).map((x) => x.textContent).join(" ")));
     liveObs.observe(box, { childList: true, subtree: true, characterData: true });
   }
 
@@ -418,6 +475,10 @@
     S.liveMode = false; S.liveCtx = []; S.audioErr = false;
     if (liveObs) { liveObs.disconnect(); liveObs = null; }
     if (webLive) { webLive.stop(); webLive = null; }
+    for (const stop of liveTimers) stop();
+    liveTimers = [];
+    clearTimeout(liveClear);
+    liveChain = Promise.resolve();
     for (const n of hiddenCaps) n.style.opacity = "";
     hiddenCaps.clear();
     if (trLine) { trLine.textContent = ""; srcLine.textContent = ""; }
@@ -485,37 +546,25 @@
   function startWebLive(gen, track) {
     S.liveMode = true;
     status(track ? "DubLens · canlı tərcümə" : "DubLens · altyazı gözlənilir (saytda CC / Subtitles-i aç)", "busy", 5000);
-    let last = "", shown = false;
-    const onLine = async (raw) => {
-      const line = (raw || "").replace(/\s+/g, " ").trim();
-      if (line === last) return;
-      last = line;
-      if (!line) { S.lastRendered = null; render(null); return; }
-      let tr = S.liveCache.get(line);
-      if (!tr) {
-        const r = await api("/api/line", { line, context: S.liveCtx.slice(-3), lang: S.cfg.lang });
-        if (gen !== S.gen) return;
-        if (!r.ok) { status("DubLens · " + r.error, "error", 4000); return; }
-        tr = r.data.tr;
-        S.liveCache.set(line, tr);
-      }
-      if (line !== last) return;                         // artıq növbəti sətir gəlib
-      S.liveCtx.push(line);
-      const v = video();
-      const t = v ? v.currentTime : 0;
-      const seg = { id: "live" + hashStr(line) + "_" + Math.round(t), s: t, e: t + 4, src: line, tr };
-      S.lastRendered = null;
-      render(seg);
-      if (!shown) { shown = true; status("DubLens · canlı tərcümə", "ok", 2500); }
-      if (S.cfg.mode === "dub") liveDub(gen, seg);
-    };
-    if (track) {
-      const read = () => onLine(Array.from(track.activeCues || []).map(cueText).join(" "));
+    if (track) {                                       // trek: hər cue ayrıca sətirdir
+      let last = "";
+      const read = () => {
+        const line = Array.from(track.activeCues || []).map(cueText).join(" ").trim();
+        if (line === last) return;
+        last = line;
+        if (line) liveChunk(gen, line);
+      };
       track.addEventListener("cuechange", read);
       webLive = { stop: () => track.removeEventListener("cuechange", read) };
       read();
-    } else {
-      const id = setInterval(() => onLine(domCaptionLine()), 250);
+    } else {                                           // pleyerin öz HTML altyazısı: sürüşən sətirlər ola bilər
+      const feed = liveSentencer(gen);
+      let shown = false;
+      const id = setInterval(() => {
+        const line = domCaptionLine();
+        if (line && !shown) { shown = true; status("DubLens · canlı tərcümə", "ok", 2500); }
+        feed(line);
+      }, 250);
       webLive = { stop: () => clearInterval(id) };
     }
   }

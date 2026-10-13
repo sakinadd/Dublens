@@ -185,7 +185,7 @@ def line(req: LineReq, u: dict = Depends(user)):
     key = "ln:" + _h(req.line, req.lang)
     r = db.cache_get(key)
     if r is None:
-        r = chains.line_chain.invoke({"line": req.line, "context": "\n".join(req.context[-3:]) or "-",
+        r = chains.line_chain.invoke({"line": req.line, "context": "\n".join(req.context[-4:]) or "-",
                                       "lang": req.lang})
         db.cache_set(key, r)
     return r

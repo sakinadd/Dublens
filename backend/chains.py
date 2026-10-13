@@ -199,7 +199,12 @@ word_chain = (RunnableLambda(lambda x: {**x, "language": config.LANGS[x.get("lan
 
 # ------------------------------------------------------------------ canlı sətir (altyazı faylı tapılmayanda)
 LINE = ChatPromptTemplate.from_messages([
-    ("system", "Translate the last subtitle line into natural spoken {language}. Earlier lines are context only. "
+    ("system", "You translate LIVE speech captions into natural spoken {language}. The captions are auto-generated: "
+               "they may lack punctuation, contain fillers (uh, um, you know), repeated words or misrecognised words. "
+               "Translate ONLY the last chunk. Earlier chunks are context: use them to understand the meaning and to fix "
+               "obvious recognition errors, but never translate or repeat them. Drop fillers and stutters, keep names "
+               "and numbers. If the chunk is an unfinished thought, translate it as a natural fragment that continues "
+               "the previous chunk. Keep it short — it is shown as a subtitle. "
                'Return ONLY JSON: {{"tr": "..."}}'),
     ("human", "Context:\n{context}\n\nLine: {line}"),
 ])
