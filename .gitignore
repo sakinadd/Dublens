@@ -1,7 +1,29 @@
+# Environment
 .env
 .venv/
+venv/
+env/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Data
 data/
+
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
